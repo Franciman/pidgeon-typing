@@ -1,6 +1,6 @@
 module CommandRegistry
 ( CommandRegistry
-, makeRegistry
+, makeCommandRegistry
 , lookupCommand
 ) where
 
@@ -8,13 +8,24 @@ import qualified Data.Map.Strict as M
 
 import qualified Data.ByteString as B
 
-import CommandDef
+import Command
 
-newtype CommandRegistry = CommandRegistry { unwrap :: M.Map B.ByteString CommandDef }
+import Commands.AnyState
+import Commands.NotAuthenticatedState
+import Commands.AuthenticatedState
+import Commands.SelectedState
 
-makeRegistry :: [CommandDef] -> CommandRegistry
+newtype CommandRegistry = CommandRegistry { unwrap :: M.Map B.ByteString Command }
+
+makeRegistry :: [Command] -> CommandRegistry
 makeRegistry = CommandRegistry . M.fromList . map (\cmd -> (commandName cmd, cmd))
 
 
-lookupCommand :: CommandRegistry -> B.ByteString -> Maybe CommandDef
+lookupCommand :: CommandRegistry -> B.ByteString -> Maybe Command
 lookupCommand (CommandRegistry reg) name = M.lookup name reg
+
+
+makeCommandRegistry = makeRegistry $ anyStateCommands
+                                   ++ notAuthenticatedStateCommands
+                                   ++ authenticatedStateCommands
+                                   ++ selectedStateCommands

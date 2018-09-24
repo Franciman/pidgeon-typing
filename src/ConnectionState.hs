@@ -5,4 +5,5 @@ module ConnectionState where
 data ConnectionState = NotAuthenticated
                      | Authenticated
                      | Selected
+                     | Logout
 

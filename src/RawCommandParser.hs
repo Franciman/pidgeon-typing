@@ -1,13 +1,29 @@
+{-# LANGUAGE OverloadedStrings #-}
 module RawCommandParser where
-
-import qualified Data.Attoparsec.ByteString as A
+    
+import qualified Text.Megaparsec as M
+import qualified Text.Megaparsec.Error as M
 import qualified Data.ByteString as B
+
+import qualified Text.Megaparsec.Byte as M
 
 import Data.Word (Word8)
 
 import Data.Char (ord)
 
+import Data.Void
+
 import Data.Functor (($>))
+
+
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Builder as B
+import qualified Data.ByteString.Lazy as BL
+
+import Network.Socket hiding (recv)
+import Network.Socket.ByteString
+
+type Parser = M.Parsec Void B.ByteString
 
 -- Utility that helps you write ascii codepoints using char literals
 -- but watch out, the character must be in the range 0 .. 127
@@ -41,32 +57,52 @@ isAStringChar :: Word8 -> Bool
 isAStringChar c = isAtomChar c || isRespSpecial c
 
 
-tag :: A.Parser B.ByteString
-tag = A.takeWhile1 (\c -> isAStringChar c && c /= ascii '+')
+tag :: Parser B.ByteString
+tag = M.takeWhile1P Nothing (\c -> isAStringChar c && c /= ascii '+')
 
-space :: A.Parser Word8
-space = A.word8 0x20
-
-crlf :: A.Parser ()
-crlf = A.word8 (ascii '\r') *> A.word8 (ascii '\n') $> ()
+space :: Parser Word8
+space = M.char 0x20
 
 -- This datatype represents a semiparsed command.
 -- It is the result of parsing only command tag and command name.
 -- Command arguments are left unparsed for further processing by specialized parsers
 data RawCommand = RawCommand
-                { commandTag       :: B.ByteString
-                , commandName      :: B.ByteString
-                , commandArguments :: B.ByteString
+                { rawCommandTag       :: B.ByteString
+                , rawCommandName      :: B.ByteString
+                , rawCommandArguments :: B.ByteString
                 }
 
 -- Superficially parse a command.
 -- This means just parse tag and command name,
 -- but leave arguments unparsed for further processing
-rawCommand :: A.Parser RawCommand
+rawCommand :: Parser RawCommand
 rawCommand = do
     commandTag <- tag
     space
-    commandName <- A.takeWhile1 (/= ascii ' ')
-    space
-    commandArguments <- B.pack <$> A.manyTill A.anyWord8 crlf
-    return $ RawCommand commandTag commandName commandArguments
+    commandName <- M.takeWhile1P Nothing (/= ascii ' ')
+    isAtEnd <- M.atEnd
+    if isAtEnd
+    then return $ RawCommand commandTag commandName B.empty
+    else do
+        space
+        commandArguments <- M.takeRest
+        return $ RawCommand commandTag commandName commandArguments
+
+parseRawCommand :: B.ByteString -> Either String RawCommand
+parseRawCommand input = case M.parse rawCommand "" input of
+    Left err -> Left (M.errorBundlePretty err)
+    Right res -> Right res
+
+getNextMessage :: B.Builder -> Socket -> IO (B.ByteString, B.Builder)
+getNextMessage leftovers conn = do
+    let bufferSize = 2048
+    chunk <- recv conn bufferSize
+    let (head, tail) = B.breakSubstring "\r\n" chunk
+    if B.null tail
+    then do
+        getNextMessage (leftovers <> B.byteString head) conn
+    else do
+        let newLeftovers = B.byteString $ B.drop 2 tail
+        let result       = BL.toStrict . B.toLazyByteString $ leftovers <> B.byteString head
+        return (result, newLeftovers)
+

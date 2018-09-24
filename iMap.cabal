@@ -18,18 +18,19 @@ cabal-version:       >=1.10
 executable iMap
   main-is:             Main.hs
   other-modules:       RawCommandParser,
-                       CommandDef,
+                       Command,
                        ConnectionState,
                        CommandRegistry,
                        Logger,
                        MailCommandMonad,
+                       ArgumentsParserUtils,
                        Commands.AnyState,
                        Commands.NotAuthenticatedState,
                        Commands.AuthenticatedState,
                        Commands.SelectedState
   -- other-extensions:
   build-depends:       base >=4.11 && <4.12,
-                       attoparsec,
+                       megaparsec,
                        bytestring,
                        text,
                        containers,
