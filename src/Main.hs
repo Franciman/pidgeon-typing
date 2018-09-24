@@ -101,17 +101,21 @@ serverMain conn registry = messageReaderLoop conn $ \msg -> do
             case lookupCommand registry (rawCommandName rawCommand) of
                 Nothing      -> lift $ reportUnknownCommand conn rawCommand
                 Just command -> do
-                    logInfo $ "Running command: " ++ show (commandName command)
-                    res <- runMailCommand (commandAction command)
-                                          commandTag
-                                          conn
-                                          unparsedCommandArgs
+                    currConnectionState <- get
+                    if not (isCommandAvaible currConnectionState command)
+                    then lift $ reportWrongState rawCommand
+                    else do
+                        logInfo $ "Running command: " ++ show (commandName command)
+                        res <- runMailCommand (commandAction command)
+                                              commandTag
+                                              conn
+                                              unparsedCommandArgs
 
-                    case res of
-                        Left err -> do
-                            logInfo $ "Arguments parse error: " ++ err
-                            lift $ reportArgumentParseError conn rawCommand
-                        Right _  -> return ()
+                        case res of
+                            Left err -> do
+                                logInfo $ "Arguments parse error: " ++ err
+                                lift $ reportArgumentParseError conn rawCommand
+                            Right _  -> return ()
 
 
 
@@ -130,3 +134,7 @@ reportArgumentParseError :: Socket -> RawCommand -> IO ()
 reportArgumentParseError conn command = do
     let errorMsg = (rawCommandTag command) `B.append` TE.encodeUtf8 " BAD invalid arguments\r\n"
     sendAll conn errorMsg
+
+reportWrongState :: Socket -> RawCommand -> IO ()
+reportWrongState conn command = do
+    let errorMsg (rawCommandTag command) `B.append` TE.encodeUTF8 " BAD invalid command in this state\r\n"
