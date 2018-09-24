@@ -103,7 +103,7 @@ serverMain conn registry = messageReaderLoop conn $ \msg -> do
                 Just command -> do
                     currConnectionState <- get
                     if not (isCommandAvaible currConnectionState command)
-                    then lift $ reportWrongState rawCommand
+                    then lift $ reportWrongState conn rawCommand
                     else do
                         logInfo $ "Running command: " ++ show (commandName command)
                         res <- runMailCommand (commandAction command)
@@ -137,4 +137,5 @@ reportArgumentParseError conn command = do
 
 reportWrongState :: Socket -> RawCommand -> IO ()
 reportWrongState conn command = do
-    let errorMsg (rawCommandTag command) `B.append` TE.encodeUTF8 " BAD invalid command in this state\r\n"
+    let errorMsg = (rawCommandTag command) `B.append` TE.encodeUtf8 " BAD invalid command in this state\r\n"
+    sendAll conn errorMsg
